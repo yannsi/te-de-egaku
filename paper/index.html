@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>紙のピアノ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0e1214; --fg:#eef2f0; --sub:#9fb0aa; --panel:#182024; --line:#2b373c; --accent:#8bd47a; --hot:#ffcf5a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:"BIZ UDPGothic","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;}
+  main{max-width:900px;margin:0 auto;padding:16px}
+  h1{font-size:1.3rem;margin:0 0 4px}
+  .lead{color:var(--sub);margin:0 0 12px;font-size:.9rem;line-height:1.6}
+  .stage{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+  .stage canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:manipulation}
+  video{display:none}
+  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:16px;background:rgba(0,0,0,.6)}
+  .overlay p{margin:0;color:var(--sub);font-size:.9rem;line-height:1.6}
+  .prompt{position:absolute;left:8px;right:8px;top:8px;background:rgba(0,0,0,.72);border:1px solid var(--hot);
+    color:var(--fg);border-radius:10px;padding:8px 12px;font-size:.95rem;line-height:1.5;text-align:center;display:none;pointer-events:none}
+  .prompt b{color:var(--hot)}
+  button,select{font-family:inherit;font-size:1rem;border:1px solid var(--line);background:var(--panel);color:var(--fg);
+    border-radius:10px;padding:10px 14px;cursor:pointer}
+  button.primary{background:var(--accent);color:#0d2408;border-color:var(--accent);font-weight:700}
+  button:disabled{opacity:.5}
+  .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px}
+  .bar label{display:flex;align-items:center;gap:6px;font-size:.95rem}
+  input[type=range]{width:140px}
+  .keys{display:grid;gap:4px;margin-top:10px}
+  .keys button{padding:12px 2px;font-size:.95rem;font-weight:700;transition:background .08s}
+  .keys button.hit{background:var(--hot);color:#2a1d00;border-color:var(--hot)}
+  .status{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .card .k{font-size:.75rem;color:var(--sub)}
+  .card .v{font-size:1.05rem;font-weight:700;margin-top:2px}
+  .help{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:.9rem;line-height:1.8}
+  .help b{color:var(--accent)}
+  .help ol{margin:4px 0 8px;padding-left:1.4em}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+  <h1>紙のピアノ</h1>
+  <p class="lead">机に置いた紙の鍵盤を指でたたくと音が鳴ります。カメラで指先と紙の位置を見ているだけで、紙には何の仕掛けもありません。</p>
+
+  <div class="stage" id="stage">
+    <canvas id="view"></canvas>
+    <div class="prompt" id="prompt"></div>
+    <div class="overlay" id="overlay">
+      <button class="primary" id="startBtn">カメラを起動する</button>
+      <p id="msg">先に下の「使い方」を見て、紙とスマホを置いてください。<br>初回はAIモデル（約8MB）を読み込みます。</p>
+    </div>
+  </div>
+  <video id="video" playsinline muted></video>
+
+  <div class="keys" id="keys"></div>
+
+  <div class="bar">
+    <label>種類
+      <select id="layoutSel">
+        <option value="piano">ピアノ（8鍵）</option>
+        <option value="drum">ドラム（4パッド）</option>
+      </select>
+    </label>
+    <label>反応のしやすさ <input type="range" id="sens" min="1" max="10" value="7"></label>
+    <button id="calibBtn">紙の四隅を合わせ直す</button>
+  </div>
+
+  <div class="status">
+    <div class="card"><div class="k">見えている手</div><div class="v" id="sHands">-</div></div>
+    <div class="card"><div class="k">最後に鳴らした音</div><div class="v" id="sLast">-</div></div>
+  </div>
+
+  <div class="help">
+    <b>使い方</b>
+    <ol>
+      <li><a href="print.html" target="_blank">鍵盤の紙</a>を印刷します（A4横）。紙に太い線で長方形を描き、縦線で8つに区切った手書きでも大丈夫です。</li>
+      <li>紙を机に置き、スマホを<b>紙の奥に立てかけて</b>、画面（前カメラ）を自分のほうへ向けます。紙と手が低い角度から映る位置がいちばん反応します。</li>
+      <li>カメラを起動したら、画面に映っている紙の<b>四隅を順番にタップ</b>します（左上→右上→右下→左下）。</li>
+      <li>紙の上に仮想の鍵盤が重なって表示されたら、指で紙を<b>トンとたたいて</b>ください。</li>
+    </ol>
+    反応しすぎるときは「反応のしやすさ」を下げ、反応しないときは上げてください。手全体を上から振り下ろすより、指だけでたたくほうが正確です。<br>
+    下のボタンを押すと、カメラなしで音だけ確かめられます。<br>
+    <a href="../">← 手で描く に戻る</a>
+  </div>
+</main>
+
+<script type="module">
+import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+const WASM  = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
+const MODEL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+const STORE = "kami-piano-corners";
+
+const LAYOUTS = {
+  piano: { cols: 8, labels: ["ド","レ","ミ","ファ","ソ","ラ","シ","ド"], midis: [60,62,64,65,67,69,71,72] },
+  drum:  { cols: 4, labels: ["キック","スネア","ハイハット","クラップ"] },
+};
+const TIPS = [4, 8, 12, 16, 20];
+const BONES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],
+               [9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+
+const $ = id => document.getElementById(id);
+const video = $("video"), view = $("view"), ctx = view.getContext("2d");
+
+let landmarker = null, W = 640, H = 480, running = false;
+let lastVideoTime = -1, result = null;
+let layoutName = "piano";
+let corners = null;            // 紙の四隅（画面上の 0〜1 の位置）左上・右上・右下・左下
+let calib = -1, calibPts = [];
+let Hf = null, Hi = null;      // 紙→画面、画面→紙 の変換
+const flash = [];              // 鍵盤が光る強さ
+let hover = new Set();
+let fingerState = [];
+let handCount = -1;
+
+const L = () => LAYOUTS[layoutName];
+
+// ---- 鍵盤ボタン（カメラなしでも音を確認できる） ----
+function buildKeys() {
+  const box = $("keys");
+  box.innerHTML = "";
+  box.style.gridTemplateColumns = `repeat(${L().cols}, 1fr)`;
+  L().labels.forEach((t, k) => {
+    const b = document.createElement("button");
+    b.textContent = t;
+    b.onpointerdown = () => { ensureAudio(); trigger(k, 0.8); };
+    box.appendChild(b);
+  });
+  flash.length = 0;
+  for (let k = 0; k < L().cols; k++) flash.push(0);
+}
+$("layoutSel").onchange = e => { layoutName = e.target.value; buildKeys(); };
+buildKeys();
+
+// ---- 音 ----
+let actx = null, master = null, noiseBuf = null;
+function ensureAudio() {
+  if (actx) { actx.resume(); return; }
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+  master = actx.createGain(); master.gain.value = 0.8;
+  const comp = actx.createDynamicsCompressor();
+  master.connect(comp); comp.connect(actx.destination);
+  noiseBuf = actx.createBuffer(1, actx.sampleRate, actx.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+}
+
+function env(g, t, peak, dur) {
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+}
+
+function playPiano(midi, vel) {
+  const t = actx.currentTime, f = 440 * Math.pow(2, (midi - 69) / 12);
+  [[1, "sine", 0.5], [2, "triangle", 0.12], [3, "sine", 0.05], [4.02, "sine", 0.02]].forEach(([m, type, a]) => {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = f * m;
+    env(g, t, vel * a, m === 1 ? 1.8 : 0.6);
+    o.connect(g); g.connect(master);
+    o.start(t); o.stop(t + 2);
+  });
+}
+
+function noise(t, dur, filterType, freq, peak) {
+  const s = actx.createBufferSource(); s.buffer = noiseBuf;
+  const f = actx.createBiquadFilter(); f.type = filterType; f.frequency.value = freq;
+  const g = actx.createGain();
+  env(g, t, peak, dur);
+  s.connect(f); f.connect(g); g.connect(master);
+  s.start(t); s.stop(t + dur + 0.05);
+}
+
+function playDrum(k, vel) {
+  const t = actx.currentTime;
+  if (k === 0) {            // キック
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.setValueAtTime(150, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+    env(g, t, vel * 1.0, 0.45);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.5);
+  } else if (k === 1) {     // スネア
+    noise(t, 0.2, "highpass", 1200, vel * 0.7);
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = "triangle"; o.frequency.value = 190;
+    env(g, t, vel * 0.4, 0.12);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.2);
+  } else if (k === 2) {     // ハイハット
+    noise(t, 0.06, "highpass", 7000, vel * 0.45);
+  } else {                  // クラップ
+    [0, 0.011, 0.022].forEach(d => noise(t + d, 0.03, "bandpass", 1500, vel * 0.6));
+    noise(t + 0.03, 0.18, "bandpass", 1400, vel * 0.4);
+  }
+}
+
+function trigger(k, vel) {
+  if (!actx) return;
+  if (layoutName === "piano") playPiano(L().midis[k], vel); else playDrum(k, vel);
+  flash[k] = 1;
+  $("sLast").textContent = L().labels[k];
+  const b = $("keys").children[k];
+  if (b) { b.classList.add("hit"); setTimeout(() => b.classList.remove("hit"), 140); }
+}
+
+// ---- 紙の四隅から位置を変換する計算（射影変換） ----
+function solve(A, b) {
+  const n = b.length;
+  for (let i = 0; i < n; i++) {
+    let m = i;
+    for (let r = i + 1; r < n; r++) if (Math.abs(A[r][i]) > Math.abs(A[m][i])) m = r;
+    [A[i], A[m]] = [A[m], A[i]]; [b[i], b[m]] = [b[m], b[i]];
+    for (let r = i + 1; r < n; r++) {
+      const f = A[r][i] / A[i][i];
+      for (let c = i; c < n; c++) A[r][c] -= f * A[i][c];
+      b[r] -= f * b[i];
+    }
+  }
+  const x = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    let s = b[i];
+    for (let c = i + 1; c < n; c++) s -= A[i][c] * x[c];
+    x[i] = s / A[i][i];
+  }
+  return x;
+}
+function homography(src, dst) {
+  const A = [], b = [];
+  for (let i = 0; i < 4; i++) {
+    const [x, y] = src[i], [X, Y] = dst[i];
+    A.push([x, y, 1, 0, 0, 0, -x * X, -y * X]); b.push(X);
+    A.push([0, 0, 0, x, y, 1, -x * Y, -y * Y]); b.push(Y);
+  }
+  return solve(A, b);
+}
+function applyH(h, x, y) {
+  const d = h[6] * x + h[7] * y + 1;
+  return { x: (h[0] * x + h[1] * y + h[2]) / d, y: (h[3] * x + h[4] * y + h[5]) / d };
+}
+function updateH() {
+  if (!corners) { Hf = Hi = null; return; }
+  const unit = [[0,0],[1,0],[1,1],[0,1]];
+  const scr = corners.map(c => [c.x * W, c.y * H]);
+  Hf = homography(unit, scr);
+  Hi = homography(scr, unit);
+}
+
+try { const s = JSON.parse(localStorage.getItem(STORE) || "null"); if (Array.isArray(s) && s.length === 4) corners = s; } catch (e) {}
+
+// ---- 四隅合わせ ----
+const CORNER_NAMES = ["左上", "右上", "右下", "左下"];
+function startCalib() {
+  calib = 0; calibPts = [];
+  showPrompt();
+}
+function showPrompt() {
+  const p = $("prompt");
+  if (calib < 0) { p.style.display = "none"; return; }
+  p.style.display = "block";
+  p.innerHTML = `画面に映っている紙の <b>${CORNER_NAMES[calib]}</b> の角をタップ（${calib + 1}/4）`;
+}
+$("calibBtn").onclick = () => { if (running) startCalib(); };
+
+view.addEventListener("pointerdown", e => {
+  if (calib < 0) return;
+  const r = view.getBoundingClientRect();
+  calibPts.push({ x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height });
+  calib++;
+  if (calib === 4) {
+    corners = calibPts;
+    calib = -1;
+    try { localStorage.setItem(STORE, JSON.stringify(corners)); } catch (err) {}
+    updateH();
+  }
+  showPrompt();
+});
+
+// ---- 起動 ----
+async function createLandmarker() {
+  const vision = await FilesetResolver.forVisionTasks(WASM);
+  for (const delegate of ["GPU", "CPU"]) {
+    try {
+      return await HandLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: MODEL, delegate }, runningMode: "VIDEO", numHands: 2
+      });
+    } catch (e) { console.warn(delegate + " で失敗", e); }
+  }
+  throw new Error("AIモデルを読み込めませんでした");
+}
+
+$("startBtn").onclick = async () => {
+  $("startBtn").disabled = true;
+  try {
+    ensureAudio();
+    $("msg").textContent = "AIモデルを読み込み中…";
+    landmarker = await createLandmarker();
+    $("msg").textContent = "カメラを起動中…";
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    W = video.videoWidth; H = video.videoHeight;
+    view.width = W; view.height = H;
+    $("stage").style.aspectRatio = W + " / " + H;
+    updateH();
+    $("overlay").style.display = "none";
+    running = true;
+    if (!corners) startCalib();
+    requestAnimationFrame(loop);
+  } catch (e) {
+    console.error(e);
+    $("msg").textContent = "起動できませんでした：" + (e.message || e);
+    $("startBtn").disabled = false;
+  }
+};
+
+function loop() {
+  if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+    lastVideoTime = video.currentTime;
+    result = landmarker.detectForVideo(video, performance.now());
+    detectTaps();
+  }
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ---- たたいたかどうかの判定 ----
+const pt = lm => ({ x: (1 - lm.x) * W, y: lm.y * H });
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const threshold = () => 4.0 - (Number($("sens").value) - 1) * 0.33;   // 手の大きさ何個分/秒で振り下ろしたら反応するか
+
+function paperPos(p) {
+  if (!Hi) return null;
+  const u = applyH(Hi, p.x, p.y);
+  if (u.x < -0.02 || u.x > 1.02 || u.y < -0.12 || u.y > 1.12) return null;
+  return u;
+}
+const keyOf = u => Math.min(L().cols - 1, Math.max(0, Math.floor(u.x * L().cols)));
+
+function detectTaps() {
+  const hands = ((result && result.landmarks) || []).map(h => h.map(pt)).sort((a, b) => a[0].x - b[0].x);
+  $("sHands").textContent = hands.length + " 本";
+  if (hands.length !== handCount) {
+    handCount = hands.length;
+    fingerState = hands.map(() => TIPS.map(() => ({ prev: null, hist: [], armed: true, last: 0 })));
+  }
+  hover = new Set();
+  if (!Hi || calib >= 0) return;
+
+  const now = performance.now();
+  const T = threshold();
+  hands.forEach((p, hi) => {
+    const size = Math.max(1, dist(p[0], p[9]));
+    TIPS.forEach((tipIdx, fi) => {
+      const st = fingerState[hi][fi];
+      const tip = p[tipIdx];
+      const u = paperPos(tip);
+      if (u) hover.add(keyOf(u));
+      if (st.prev) {
+        const dt = Math.max(1, now - st.prev.t) / 1000;
+        const vy = (tip.y - st.prev.y) / size / dt;
+        const wvy = (p[0].y - st.prev.wy) / size / dt;
+        const eff = vy - 0.5 * wvy;                         // 手全体の動きは半分差し引く
+        const recent = st.hist.filter(h => now - h.t < 170);
+        const peak = recent.reduce((m, h) => Math.max(m, h.v), 0);
+        if (!st.armed && (eff < -T * 0.3 || now - st.last > 500)) st.armed = true;
+        if (st.armed && peak > T && eff < T * 0.3 && now - st.last > 150 && u) {
+          trigger(keyOf(u), Math.min(1, Math.max(0.35, peak / (T * 2.5))));
+          st.armed = false; st.last = now; st.hist = [];
+        } else {
+          st.hist.push({ t: now, v: eff });
+          if (st.hist.length > 10) st.hist.shift();
+        }
+      }
+      st.prev = { t: now, y: tip.y, wy: p[0].y };
+    });
+  });
+}
+
+// ---- 描画 ----
+function render() {
+  ctx.save();
+  ctx.translate(W, 0); ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0, W, H);
+  ctx.restore();
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.fillRect(0, 0, W, H);
+
+  // 紙の上の仮想鍵盤
+  if (Hf && calib < 0) {
+    const cols = L().cols;
+    const P = (x, y) => applyH(Hf, x, y);
+    for (let k = 0; k < cols; k++) {
+      const a = P(k / cols, 0), b = P((k + 1) / cols, 0), c = P((k + 1) / cols, 1), d = P(k / cols, 1);
+      const f = flash[k];
+      const hv = hover.has(k) ? 0.18 : 0;
+      ctx.fillStyle = f > 0.02 ? `rgba(255,207,90,${0.25 + f * 0.5})` : `rgba(139,212,122,${0.06 + hv})`;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "rgba(139,212,122,0.85)"; ctx.lineWidth = 2; ctx.stroke();
+      const m = P((k + 0.5) / cols, 0.5);
+      ctx.fillStyle = "#fff";
+      ctx.font = `bold ${Math.round(H * (cols > 4 ? 0.04 : 0.035))}px "BIZ UDPGothic", sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(L().labels[k], m.x, m.y);
+      flash[k] *= 0.88;
+    }
+    ctx.textAlign = "start";
+  }
+
+  // 四隅合わせ中の点
+  if (calib >= 0) {
+    calibPts.forEach((c, i) => {
+      ctx.fillStyle = "#ffcf5a";
+      ctx.beginPath(); ctx.arc(c.x * W, c.y * H, Math.max(6, W * 0.012), 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#000"; ctx.font = `bold ${Math.round(H * 0.03)}px sans-serif`; ctx.textAlign = "center";
+      ctx.fillText(String(i + 1), c.x * W, c.y * H + H * 0.01);
+      ctx.textAlign = "start";
+    });
+  }
+
+  // 手
+  const hands = ((result && result.landmarks) || []).map(h => h.map(pt));
+  hands.forEach(p => {
+    ctx.strokeStyle = "rgba(255,255,255,0.45)";
+    ctx.lineWidth = Math.max(1.5, W * 0.003);
+    ctx.beginPath();
+    BONES.forEach(([a, b]) => { ctx.moveTo(p[a].x, p[a].y); ctx.lineTo(p[b].x, p[b].y); });
+    ctx.stroke();
+    TIPS.forEach(t => {
+      const on = paperPos(p[t]);
+      ctx.fillStyle = on ? "#ffcf5a" : "rgba(255,255,255,0.8)";
+      ctx.beginPath(); ctx.arc(p[t].x, p[t].y, Math.max(4, W * 0.009), 0, Math.PI * 2); ctx.fill();
+    });
+  });
+}
+</script>
+</body>
+</html>
