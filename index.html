@@ -160,7 +160,7 @@ async function start() {
     requestAnimationFrame(loop);
   } catch (e) {
     console.error(e);
-    $("msg").textContent = "起動できませんでした：" + (e.message || e);
+    $("msg").textContent = "起動できませんでした：" + (e.message || e) + (navigator.onLine ? "" : "　いまは電波がないようです。一度ネットにつながる所で「はじめる」を押すと、次からは電波がなくても動きます。");
     $("startBtn").disabled = false;
   }
 }
@@ -284,6 +284,8 @@ function drawRing(center, progress) {
   ctx.strokeStyle = "#ff6b6b";
   ctx.stroke();
 }
+// 一度ネットのある所で動かせば、次からは電波のない所でも動くようにする（部品の保存は sw.js）
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
 </body>
 </html>
