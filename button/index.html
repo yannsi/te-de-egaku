@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>空中ボタン</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f1115; --fg:#e8e8e8; --sub:#9aa0a6; --panel:#1a1d24; --line:#2a2f38; --accent:#4fc3f7;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:"BIZ UDPGothic","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;}
+  main{max-width:720px;margin:0 auto;padding:16px}
+  h1{font-size:1.3rem;margin:0 0 4px}
+  .lead{color:var(--sub);margin:0 0 12px;font-size:.9rem;line-height:1.6}
+  .stage{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+  .stage canvas{position:absolute;inset:0;width:100%;height:100%}
+  video{display:none}
+  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:16px;background:rgba(0,0,0,.55);z-index:5}
+  .overlay p{margin:0;color:var(--sub);font-size:.9rem;line-height:1.6}
+  button{font-family:inherit;font-size:1rem;border:1px solid var(--line);background:var(--panel);color:var(--fg);
+    border-radius:10px;padding:10px 16px;cursor:pointer}
+  button.primary{background:var(--accent);color:#06222e;border-color:var(--accent);font-weight:700}
+  button:disabled{opacity:.5}
+
+  /* 画面の上に置く本物のボタン（手でも、指で触っても、マウスでも押せる） */
+  .air{position:absolute;width:30%;height:30%;border-radius:18px;z-index:2;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    background:rgba(20,24,32,.55);border:3px solid var(--c);color:#fff;
+    font-size:clamp(1.2rem,5vw,2.2rem);font-weight:700;text-shadow:0 2px 6px rgba(0,0,0,.8);
+    transition:transform .12s, background .12s;
+    --p:0}
+  .air small{font-size:clamp(.7rem,2.4vw,.95rem);font-weight:400}
+  .air::after{content:"";position:absolute;inset:-3px;border-radius:18px;pointer-events:none;
+    background:conic-gradient(var(--c) calc(var(--p) * 1turn), transparent 0);
+    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor; mask-composite:exclude; padding:7px; opacity:.95}
+  .air.hover{background:color-mix(in srgb, var(--c) 35%, rgba(20,24,32,.55));transform:scale(1.04)}
+  .air.hit{background:var(--c);color:#111;text-shadow:none;transform:scale(.94)}
+  .dot{position:absolute;z-index:3;pointer-events:none;width:5%;aspect-ratio:1;border-radius:50%;
+    border:4px solid #fff;transform:translate(-50%,-50%);display:none;box-shadow:0 0 6px rgba(0,0,0,.8)}
+  .dot.pinch{background:#fff}
+  #b0{left:3%;top:4%}  #b1{right:3%;top:4%}
+  #b2{left:3%;bottom:4%} #b3{right:3%;bottom:4%}
+
+  .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+  .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .seg button{border:0;border-radius:0;padding:10px 14px}
+  .seg button.on{background:var(--accent);color:#06222e;font-weight:700}
+  .bar label{display:flex;align-items:center;gap:6px;font-size:.95rem}
+  select{font-family:inherit;font-size:1rem;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:10px;padding:9px 10px}
+
+  .status{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .card .k{font-size:.75rem;color:var(--sub)}
+  .card .v{font-size:1.05rem;font-weight:700;margin-top:2px}
+  .help{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:.9rem;line-height:1.8}
+  .help b{color:var(--accent)}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+  <h1>空中ボタン</h1>
+  <p class="lead">画面に置いたボタンを、画面に触らずに手で押します。指先をボタンに重ねて「つまむ」か、そのまま「止める」と押せます。映像は端末の中だけで処理され、外には送られません。</p>
+
+  <div class="stage" id="stage">
+    <canvas id="view"></canvas>
+    <button class="air" id="b0" style="--c:#ff6b6b">ド<small>押した 0 回</small></button>
+    <button class="air" id="b1" style="--c:#ffd54f">ミ<small>押した 0 回</small></button>
+    <button class="air" id="b2" style="--c:#81c784">ソ<small>押した 0 回</small></button>
+    <button class="air" id="b3" style="--c:#4fc3f7">ド↑<small>押した 0 回</small></button>
+    <div class="dot" id="dot"></div>
+    <div class="overlay" id="overlay">
+      <button class="primary" id="startBtn">カメラを起動する</button>
+      <p id="msg">初回はAIモデル（約8MB）を読み込みます</p>
+    </div>
+  </div>
+  <video id="video" playsinline muted></video>
+
+  <div class="bar">
+    <div class="seg" id="modeSeg">
+      <button data-m="pinch">つまむ</button>
+      <button data-m="dwell">止める</button>
+      <button data-m="both" class="on">両方</button>
+    </div>
+    <label>止める時間
+      <select id="dwellSel">
+        <option value="0.6">0.6秒</option>
+        <option value="1" selected>1秒</option>
+        <option value="1.5">1.5秒</option>
+        <option value="2">2秒</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="status">
+    <div class="card"><div class="k">指の状態</div><div class="v" id="sPose">-</div></div>
+    <div class="card"><div class="k">最後に押した</div><div class="v" id="sLast">-</div></div>
+    <div class="card"><div class="k">処理速度</div><div class="v" id="sFps">-</div></div>
+  </div>
+
+  <div class="help">
+    <b>指先の丸</b>（親指と人差し指のあいだ）をボタンに重ねると、ボタンが明るくなります。<br>
+    <b>つまむ</b> … 重ねたまま親指と人差し指をくっつけると押せます。いちばん間違えて押しにくい押し方です。<br>
+    <b>止める</b> … 重ねたまま手を止めると、ボタンのふちに色がたまり、一周すると押せます。つまむのが難しい手でも使えます。続けて押すときは、一度ボタンの外に出てください。<br>
+    ボタンは画面を指で触っても、マウスでも押せます（同じボタンです）。<br>
+    音が出ないときは、マナーモードを解除して音量を上げてください。<br>
+    <a href="../">← 手で描く に戻る</a>
+  </div>
+</main>
+
+<script type="module">
+import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+const WASM  = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
+const MODEL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+
+const BONES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],
+               [9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+
+const $ = id => document.getElementById(id);
+const video = $("video"), view = $("view"), ctx = view.getContext("2d"), stage = $("stage");
+
+let landmarker = null, W = 640, H = 480;
+let lastVideoTime = -1, result = null;
+let pinching = false, cursor = null;
+let frames = 0, fpsT = performance.now();
+let mode = "both", dwellSec = 1;
+let hoverBtn = null, dwellStart = 0, dwellDone = false;
+let actx = null;
+
+// ===== ボタン（ふつうの HTML のボタン。手で押すときも .click() を呼ぶだけ） =====
+const NOTES = [261.63, 329.63, 392.00, 523.25];   // ド ミ ソ 高いド
+const NAMES = ["ド", "ミ", "ソ", "ド↑"];
+const btns = [0, 1, 2, 3].map(i => $("b" + i));
+const counts = [0, 0, 0, 0];
+let lastHow = "指・マウス";   // 手で押したときは直前に書きかえる
+
+btns.forEach((b, i) => {
+  b.addEventListener("click", () => {
+    counts[i]++;
+    b.querySelector("small").textContent = "押した " + counts[i] + " 回";
+    b.classList.add("hit");
+    setTimeout(() => b.classList.remove("hit"), 180);
+    beep(NOTES[i]);
+    if (navigator.vibrate) navigator.vibrate(30);
+    $("sLast").textContent = NAMES[i] + "（" + lastHow + "）";
+    lastHow = "指・マウス";
+  });
+});
+
+// 押し方の切りかえ
+document.querySelectorAll("#modeSeg button").forEach(b => {
+  b.onclick = () => {
+    mode = b.dataset.m;
+    document.querySelectorAll("#modeSeg button").forEach(x => x.classList.toggle("on", x === b));
+    $("dwellSel").disabled = mode === "pinch";
+    resetDwell();
+  };
+});
+$("dwellSel").onchange = e => { dwellSec = +e.target.value; resetDwell(); };
+
+function handPress(b, how) {
+  lastHow = how;
+  b.click();
+}
+
+// ===== 音（端末の中で作る） =====
+function beep(freq) {
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state === "suspended") actx.resume();
+  const t = actx.currentTime;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = "triangle";
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.35, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+  o.connect(g).connect(actx.destination);
+  o.start(t); o.stop(t + 0.65);
+}
+
+// ===== カメラと手の読み取り =====
+$("startBtn").onclick = start;
+
+async function createLandmarker() {
+  const vision = await FilesetResolver.forVisionTasks(WASM);
+  for (const delegate of ["GPU", "CPU"]) {
+    try {
+      return await HandLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: MODEL, delegate },
+        runningMode: "VIDEO",
+        numHands: 1
+      });
+    } catch (e) { console.warn(delegate + " で失敗", e); }
+  }
+  throw new Error("AIモデルを読み込めませんでした");
+}
+
+async function start() {
+  $("startBtn").disabled = true;
+  // 音はボタンを押した流れの中で用意しておく（スマホで鳴らすため）
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  actx.resume();
+  try {
+    $("msg").textContent = "AIモデルを読み込み中…";
+    landmarker = await createLandmarker();
+
+    $("msg").textContent = "カメラを起動中…";
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+
+    W = video.videoWidth; H = video.videoHeight;
+    view.width = W; view.height = H;
+    stage.style.aspectRatio = W + " / " + H;
+
+    $("overlay").style.display = "none";
+    requestAnimationFrame(loop);
+  } catch (e) {
+    console.error(e);
+    $("msg").textContent = "起動できませんでした：" + (e.message || e) + (navigator.onLine ? "" : "　いまは電波がないようです。一度ネットにつながる所で「はじめる」を押すと、次からは電波がなくても動きます。");
+    $("startBtn").disabled = false;
+  }
+}
+
+function loop() {
+  if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+    lastVideoTime = video.currentTime;
+    result = landmarker.detectForVideo(video, performance.now());
+    frames++;
+  }
+  render();
+  const now = performance.now();
+  if (now - fpsT > 1000) {
+    $("sFps").textContent = Math.round(frames * 1000 / (now - fpsT)) + " fps";
+    frames = 0; fpsT = now;
+  }
+  requestAnimationFrame(loop);
+}
+
+const pt = lm => ({ x: (1 - lm.x) * W, y: lm.y * H });   // 鏡写し
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+// カメラの座標 → 画面の上でどのボタンに重なっているか
+function buttonAt(c) {
+  const r = stage.getBoundingClientRect();
+  const x = r.left + c.x / W * r.width, y = r.top + c.y / H * r.height;
+  return btns.find(b => {
+    const q = b.getBoundingClientRect();
+    return x >= q.left && x <= q.right && y >= q.top && y <= q.bottom;
+  }) || null;
+}
+
+function resetDwell() {
+  dwellStart = 0; dwellDone = false;
+  btns.forEach(b => b.style.setProperty("--p", 0));
+}
+
+function render() {
+  ctx.save();
+  ctx.translate(W, 0); ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0, W, H);
+  ctx.restore();
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fillRect(0, 0, W, H);
+
+  const hands = (result && result.landmarks) || [];
+  let pose = "手が見えません";
+  const now = performance.now();
+
+  if (hands.length) {
+    const p = hands[0].map(pt);
+    const size = dist(p[0], p[9]);
+    const ratio = dist(p[4], p[8]) / size;
+
+    const wasPinching = pinching;
+    if (!pinching && ratio < 0.30) pinching = true;
+    else if (pinching && ratio > 0.45) pinching = false;
+
+    // 指先の丸 = 親指と人差し指の中間。つまむ瞬間に丸がずれないよう、つまんでいる間は動きを鈍くする
+    const target = { x: (p[4].x + p[8].x) / 2, y: (p[4].y + p[8].y) / 2 };
+    const k = pinching ? 0.25 : 0.5;
+    cursor = cursor ? { x: cursor.x + (target.x - cursor.x) * k, y: cursor.y + (target.y - cursor.y) * k } : target;
+
+    const over = buttonAt(cursor);
+    if (over !== hoverBtn) {
+      if (hoverBtn) hoverBtn.classList.remove("hover");
+      if (over) over.classList.add("hover");
+      hoverBtn = over;
+      resetDwell();
+    }
+
+    // つまんだ瞬間に重なっていたボタンを押す
+    if (pinching && !wasPinching && over && mode !== "dwell") {
+      handPress(over, "つまむ");
+      dwellDone = true;          // 同じボタンで「止める」が続けて働かないように
+    }
+
+    // 止めて押す
+    if (over && mode !== "pinch" && !dwellDone && !pinching) {
+      if (!dwellStart) dwellStart = now;
+      const prog = Math.min((now - dwellStart) / (dwellSec * 1000), 1);
+      over.style.setProperty("--p", prog);
+      if (prog >= 1) {
+        handPress(over, "止める");
+        dwellDone = true;
+        setTimeout(() => over.style.setProperty("--p", 0), 250);
+      }
+    }
+
+    pose = pinching ? "つまんでいます" : over ? "ボタンの上" : "ひらいています";
+  } else {
+    pinching = false; cursor = null;
+    if (hoverBtn) hoverBtn.classList.remove("hover");
+    hoverBtn = null;
+    resetDwell();
+  }
+
+  // 手の骨格
+  hands.forEach(h => {
+    const p = h.map(pt);
+    ctx.strokeStyle = "rgba(79,195,247,0.9)";
+    ctx.lineWidth = Math.max(2, W * 0.004);
+    ctx.beginPath();
+    BONES.forEach(([a, b]) => { ctx.moveTo(p[a].x, p[a].y); ctx.lineTo(p[b].x, p[b].y); });
+    ctx.stroke();
+    ctx.fillStyle = "#fff";
+    p.forEach(q => { ctx.beginPath(); ctx.arc(q.x, q.y, Math.max(2.5, W * 0.005), 0, Math.PI * 2); ctx.fill(); });
+  });
+
+  // 指先の丸（ボタンの上に重ねて見えるように、canvas ではなく別の部品で出す）
+  const dot = $("dot");
+  if (cursor) {
+    dot.style.display = "block";
+    dot.style.left = (cursor.x / W * 100) + "%";
+    dot.style.top = (cursor.y / H * 100) + "%";
+    dot.classList.toggle("pinch", pinching);
+  } else {
+    dot.style.display = "none";
+  }
+
+  $("sPose").textContent = pose;
+}
+// 一度ネットのある所で動かせば、次からは電波のない所でも動くようにする（部品の保存は ../sw.js）
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) navigator.serviceWorker.register("../sw.js").catch(() => {});
+</script>
+</body>
+</html>

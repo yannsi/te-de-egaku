@@ -1,9 +1,9 @@
-// 手で描く・空中ギター・紙のピアノ：電波のない所でも動くように、ページと「手を読み取る部品」を端末に保存する
+// 手で描く・空中ギター・紙のピアノ・空中ボタン：電波のない所でも動くように、ページと「手を読み取る部品」を端末に保存する
 // 部品（十数MB）は外のサーバーにあるので、一度ネットのある所で「はじめる」を押したときに保存される
-const VERSION = "te-de-egaku-v1";
+const VERSION = "te-de-egaku-v2";
 const PARTS = "te-de-egaku-parts-0.10.14";   // 手を読み取る部品（MediaPipe 0.10.14 とモデル）。版が変わるまで使い回す
 const FONTS = "te-de-egaku-fonts";
-const CORE = ["./", "./index.html", "./guitar/", "./guitar/index.html", "./paper/", "./paper/index.html", "./paper/print.html"];
+const CORE = ["./", "./index.html", "./guitar/", "./guitar/index.html", "./paper/", "./paper/index.html", "./paper/print.html", "./button/", "./button/index.html"];
 const isPart = u => (u.host === "cdn.jsdelivr.net" && u.pathname.includes("/@mediapipe/tasks-vision@"))
   || (u.host === "storage.googleapis.com" && u.pathname.startsWith("/mediapipe-models/"));
 
